@@ -1,0 +1,179 @@
+---
+title: "PredictionAssignment"
+output: html_document
+---
+
+# Overview
+In this report, we are using the Weight Lifting Exercise Dataset to predict the manner in which they did the exercise. We will use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants who were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+Note: The dataset used in this project is a courtesy of “Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers’ Data Classification of Body Postures and Movements”
+
+# Data Processing
+Load libraries:
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+```
+
+Download data from source:
+```{r}
+# create "data" folder if it doesn't already exist
+if(!dir.exists("./data"))
+    dir.create("./data")
+
+# download files if it doesn't already exist
+if(!file.exists("./data/pml-training.csv")) {
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+                  , "./data/pml-training.csv", mode="wb")
+}
+
+if(!file.exists("./data/pml-testing.csv")) {
+    download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+                  , "./data/pml-testing.csv", mode="wb")
+}
+```
+
+### Reading dataset:
+```{r}
+traintest <- read.csv("./data/pml-training.csv")
+validateset  <- read.csv("./data/pml-testing.csv")
+```
+
+The traintest dataset will be split into 2: 
+
+- a training set for modeling (70%)
+- a testing set for validation (30%)
+
+The validateset dataset will only be used for prediction quiz.
+
+###  Cleaning up dataset:
+The dataset has many variables:
+```{r}
+dim(traintest)
+```
+
+Some of those are identification variables that are not relevant to the study (eg. subject names, timestamps), variables with mostly NAs values and variables with nearly zero variance(NZV) which will bring no value to the analysis.
+
+Remove identification variables (columns 1 - 7):
+```{r}
+traintest <- traintest[, -(1:7)]
+```
+
+Remove variables with mostly NAs:
+```{r}
+traintest<- traintest[, colSums(is.na(traintest)) == 0]
+```
+
+Remove variables with nearly zero variance (NZV):
+```{r}
+nzv <- nearZeroVar(traintest)
+traintest <- traintest[, -nzv]
+```
+
+After cleaning variables:
+```{r}
+dim(traintest)
+```
+
+### Splitting into training and testing dataset:
+```{r}
+inTrain  <- createDataPartition(traintest$classe, p=0.7, list=FALSE)
+trainset <- traintest[inTrain, ]
+testset  <- traintest[-inTrain, ]
+```
+
+Training set dimension:
+```{r}
+dim(trainset)
+```
+
+Testing set dimension:
+```{r}
+dim(testset)
+```
+# Data Analysis
+### Correlation Analysis
+
+Analyze variables' correlation using corrplot:
+```{r}
+corMatrix <- cor(trainset[, -53])
+corrplot(corMatrix, order = "FPC", method = "color", type = "lower", 
+         tl.cex = 0.8, tl.col = rgb(0, 0, 0))
+```
+
+Highly correlated variables are shown in darker colours in the corrplot.
+
+# Prediction Model Building
+In this project, we will use 3 methods:
+
+1. Classification tree
+2. Random forest
+3. Generalized boosted model
+
+### Classification Tree
+```{r}
+set.seed(1234)
+modfitTree <- rpart(classe ~ ., data=trainset, method="class")
+fancyRpartPlot(modfitTree)
+```
+
+Validate using testset:
+```{r}
+predictTree <- predict(modfitTree, newdata=testset, type="class")
+cmTree <- confusionMatrix(predictTree, as.factor(testset$classe))
+cmTree
+```
+
+**Decision tree accuracy: `r cmTree$overall['Accuracy']`**
+
+### Random Forest
+```{r}
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modfitRF <- train(classe ~ ., data=trainset, method="rf", trControl=controlRF)
+modfitRF$finalModel
+```
+
+Validate using testset:
+```{r}
+predictRF <- predict(modfitRF, newdata=testset)
+cmRF <- confusionMatrix(predictRF, as.factor(testset$classe))
+cmRF
+```
+
+**Random forest accuracy: `r cmRF$overall['Accuracy']`**
+
+### Generalized Boosted Model
+```{r}
+controlGBM <- trainControl(method="repeatedcv", number=5, repeats=1)
+modfitGBM <- train(classe ~ ., data=trainset, method="gbm", trControl=controlGBM, verbose=FALSE)
+modfitGBM$finalModel
+print(modfitGBM)
+```
+
+Validate using testset:
+```{r}
+predictGBM <- predict(modfitGBM, newdata=testset)
+cmGBM <- confusionMatrix(predictGBM, as.factor(testset$classe))
+cmGBM
+```
+
+**Random forest accuracy: `r cmGBM$overall['Accuracy']`**
+
+# Applying selected model to validation data
+The accuracy of each model is as below:
+
+Model | Accuracy
+------|---------
+Tree | `r cmTree$overall['Accuracy']`
+Random Forest | `r cmRF$overall['Accuracy']`
+Generalized Boosted Model | `r cmGBM$overall['Accuracy']`
+
+Using Random Forest model on the validation data:
+```{r}
+predictValidate <- predict(modfitRF, newdata=validateset)
+predictValidate
+```
