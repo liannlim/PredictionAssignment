@@ -1,3 +1,3 @@
 # Prediction Assignment
 
-[a PredictionAssignment.html](./PredictionAssignment.html)
+[PredictionAssignment.html](./PredictionAssignment.html)
